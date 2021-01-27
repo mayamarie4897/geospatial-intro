@@ -1,0 +1,205 @@
+---
+title: "Intro to Geospatial Data"
+author: "Maya Van Nuys"
+date: "1/25/2021"
+output: pdf_document
+---
+
+
+
+```{r}
+# Setup: 
+require(tidyverse)
+require(ggplot2)
+require(ggmap)
+require(sf)
+
+pdb_map <- read.csv("~//geospatial//pdb_map_sample.csv")
+
+# To plot later, we need the coordinates to be numeric
+
+pdb_map$lat <- as.numeric(pdb_map$lat)
+pdb_map$long <- as.numeric(pdb_map$long)
+
+# Creating date and coordinate variables from the existing columns:
+pdb_map <- pdb_map %>%
+  mutate(date = as.Date(paste(Year, Month, Day, sep = "-"))) %>%
+  mutate(coordinates = paste(lat, long, sep = ", ")) 
+
+```
+
+# ggplot2 
+
+## You can create basic maps with ggplot2, treating coordinate data just as you would points on a graph. The x-axis corresponds to longitude and the y-axis to latitude. 
+
+```{r}
+# Simple map using ggplot2
+
+ggplot(pdb_map, aes(long, lat)) +
+  geom_point()
+```
+
+
+## So now we have the coordinates of our data plotted on an x-y axis. But we do not have a background layer to tell where these points are on a world map. To do this, we will need a base layer of the world map.  
+
+```{r}
+world_map <- map_data('world')
+
+ggplot() +
+  geom_polygon(data = world_map, aes(long, lat, group= group), fill = "lightgray") +
+  geom_point(data = pdb_map, aes(x = long, y = lat))
+```
+
+## Great! Now we can see the locations of the centroids for PDB maps. Notice the concentration of maps in Southeast Asia - this makes sense given that the sample covers the years 1961-1977. Now let's try some aesthetic changes:
+
+```{r}
+# What if we want to adjust coordinate point size by a variable?
+
+# Frequency of map centroids at certain coordinates in PDBs: 
+pdb_freq <- pdb_map %>%
+  group_by(coordinates) %>%
+  mutate(count = sum(length(coordinates)))
+  
+ggplot() +
+  geom_polygon(data = world_map, aes(long, lat, group= group), fill = "lightgray") +
+  geom_point(data = pdb_freq, aes(x = long, y = lat, size = count), color = "blue", alpha = 0.3)
+
+```
+
+# tmap
+
+## tmap is similar to ggplot2, but it is tailored for making thematic maps. Like ggplot2, the pacakge uses flexible layering to visualize spatial data. 
+
+## tmap functions: 
+
+* tm_shape() --> ggplot()
+* tm_borders() --> geom_polygon()
+* tm_lines() --> geom_line()
+* tm_dots() --> geom_point()
++ tm_bubbles()
+  
+  
+# sf
+
+## The sf library (Simple Features) is a relatively recent library for handling spatial data in R which makes data frame manipulation easier than its predecessor library, sp. sf allows us to work with tidyverse functions. We can use sf to transform our coordinate data into spatial data for plotting in tmap without using an outside GIS software like QGIS. 
+  
+
+```{r}
+require(tmap)
+require(sf)
+
+# Now we want spatial data as an sf object to use tmap. Note that we are setting the CRS here to a fairly standard one - the EPSG projection 4326 which corresponds to the WGS84 reference ellipsoid. 
+
+map_sf <- st_as_sf(pdb_freq, coords = c("long", "lat"), crs = 4326)
+
+# Now let's try a simple map with tmap: 
+
+qtm(map_sf)
+
+# Because our data only contains spatial points and no polygons, we run into the same issue as we did with ggplot2. We need a base polygon layer for the world map:
+
+data("World") #this data comes with the tmap package
+
+# Now we can layer our point data over the built-in world polygon data: 
+
+tm_shape(World) +
+  tm_borders() +
+  tm_shape(map_sf) +
+  tm_dots()
+
+```
+
+# Bonus: GIFs
+
+## While not always the most useful for data analysis, tmap makes it very easy to create GIFs with maps. For the PDB maps, we can create a GIF of the map locations by year while retaining the formatting for point-size by count. [h/t to Zach Klamann for insight on GIFs] 
+
+## To use the tmap_animation function, you will need to install ImageMagick: https://imagemagick.org/script/download.php  
+
+```{r}
+require(magick)
+require(gifski)
+
+pdb_gif <- tm_shape(World) +
+  tm_borders() +
+  tm_shape(map_sf) +
+  tm_bubbles(size = 'count', col = "blue", alpha = 0.3) +
+  tm_facets(along = "Year", free.coords = F)
+
+tmap_animation(pdb_gif, "pdb_maps.gif", loop = TRUE, delay = 100)
+
+
+```
+# PRIO-GRID
+
+```{r}
+#url <- "https://grid.prio.org/extensions/priogrid_cellshp.zip"
+
+#destfile <- "~\\geospatial\\output.zip"
+
+#download.file(url, destfile)
+
+```
+
+
+```{r}
+prio <- st_read("~\\geospatial\\output",
+                  layer = 'priogrid_cell',
+                 stringsAsFactors = F) %>%
+  mutate(gid = as.character(gid))
+
+
+class(prio)
+
+prio_vars <- read.csv("prio_vars.csv") %>%
+  mutate(gid = as.character(ï..gid)) %>%
+  select(-ï..gid)
+
+prio <- left_join(prio, prio_vars, by = "gid")
+
+
+```
+
+```{r}
+prio %>%
+  filter(gwno == 101) %>% 
+  ggplot(aes(fill = forest_ih)) + 
+  geom_sf() + 
+  scale_fill_viridis_c(option = "inferno", 
+                       end = .9, 
+                       trans = "log10", 
+                       labels = scales::comma, 
+                       name = "") + 
+  labs(title = "GRID-level forest cover in Venezuela") + 
+  theme(panel.grid.major = element_blank()) 
+
+```
+
+# layering
+
+```{r}
+vietnam <- prio %>%
+  filter(gwno == 816) 
+
+tm_shape(vietnam) +
+  tm_fill(col = "forest_ih") +
+  tm_shape(map_sf) +
+  tm_dots()
+
+```
+
+# merging
+
+```{r}
+pdb_int <- st_join(map_sf, prio)
+
+which(duplicated(pdb_int$MapPDBid))
+pdb_int <- pdb_int[-96:-98,]
+
+
+```
+```{r}
+
+noah_dat <- readRDS("~\\geospatial\\MEX_Adm1.Rdata")
+
+```
+
