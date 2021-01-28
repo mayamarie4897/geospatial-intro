@@ -68,7 +68,7 @@ ggplot() +
 
 # tmap
 
-## tmap is similar to ggplot2, but it is tailored for making thematic maps. Like ggplot2, the pacakge uses flexible layering to visualize spatial data. 
+## tmap is similar to ggplot2, but it is tailored for making thematic maps. Like ggplot2, the package uses flexible layering to visualize spatial data. 
 
 ## tmap functions: 
 
@@ -129,17 +129,30 @@ tmap_animation(pdb_gif, "pdb_maps.gif", loop = TRUE, delay = 100)
 
 
 ```
+
+
 # PRIO-GRID
 
+## The PRIO-GRID dataset is a grid structure spatial data set with infomration on armed conflicts, socio-economic conditions, ethnic groups, physical attributes, climatic conditions, and other variables. You can download csv or spatial data from static and time-sensitive variables. You can find the data set and more information here: https://grid.prio.org/#/ 
+
+### In the code below, we are pulling the full shape file (spatial data file) from the PRIO website and downloading it onto our computer as a zip file. Then we unzip the file into a new folder.  
+
+
 ```{r}
-#url <- "https://grid.prio.org/extensions/priogrid_cellshp.zip"
+url <- "https://grid.prio.org/extensions/priogrid_cellshp.zip"
 
-#destfile <- "~\\geospatial\\output.zip"
+destfile <- "~\\geospatial\\output.zip"
 
-#download.file(url, destfile)
+download.file(url, destfile)
+
+unzip("~\\geospatial\\output.zip", overwrite = T, exdir = "~\\geospatial\\output")
 
 ```
 
+
+### Next, we use sf's st_read function to read the spatial data into R. Notice the "layer" argument takes the name shared by the multiple files in the new output folder (though each has a different extension). The class of the resulting object is an sf data frame. 
+
+### Next, we can read in a csv of several variables from the PRIO data. This is necessary in order to join country ids (gid) and the associated variables with the shape file. 
 
 ```{r}
 prio <- st_read("~\\geospatial\\output",
@@ -159,22 +172,9 @@ prio <- left_join(prio, prio_vars, by = "gid")
 
 ```
 
-```{r}
-prio %>%
-  filter(gwno == 101) %>% 
-  ggplot(aes(fill = forest_ih)) + 
-  geom_sf() + 
-  scale_fill_viridis_c(option = "inferno", 
-                       end = .9, 
-                       trans = "log10", 
-                       labels = scales::comma, 
-                       name = "") + 
-  labs(title = "GRID-level forest cover in Venezuela") + 
-  theme(panel.grid.major = element_blank()) 
 
-```
+### Now we can filter for spatial data pertaining to Vietnam only. We then use tmap to visualize the PRIO data on forest coverage with the map centroids layered over. 
 
-# layering
 
 ```{r}
 vietnam <- prio %>%
@@ -187,7 +187,9 @@ tm_shape(vietnam) +
 
 ```
 
-# merging
+## Merging
+
+### The sf package has great functionality for combining spatial data sets. The st_join function operates essentially like merge for non-spatial data frames. In the example below, we are matching the centroid locations from PDB maps with the information from the PRIO-GRID data set. We can then use these data to test hypotheses, such as whether the locations in PDB maps tend to be more or less barren and whether this trend has changed over time.
 
 ```{r}
 pdb_int <- st_join(map_sf, prio)
@@ -195,11 +197,6 @@ pdb_int <- st_join(map_sf, prio)
 which(duplicated(pdb_int$MapPDBid))
 pdb_int <- pdb_int[-96:-98,]
 
-
 ```
-```{r}
 
-noah_dat <- readRDS("~\\geospatial\\MEX_Adm1.Rdata")
-
-```
 
